@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="es">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Analizador de Miniaturas con IA</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <main>
+        <h1>Analizador de Miniaturas con IA</h1>
+        
+        <div class="row">
+            <div class="card">
+                <h3>Por URL</h3>
+                <input id="url" type="text" placeholder="https://..." />
+                <button id="btnUrl">Analizar</button>
+                <div id="urlPrev"></div>
+                <div id="urlResult" class="result-box"></div>
+            </div>
+
+            <div class="card">
+                <h3>Por Archivo</h3>
+                <input id="file" type="file" accept="image/*" disabled/>
+                <button id="btnFile" disabled>Analizar</button>
+                <div id="filePrev"></div>
+                <div id="fileResult" class="result-box"></div>
+            </div>
+        </div>
+    </main>
+
+    <script>
+        function displayResult(elementId, data) {
+            const resultDiv = document.getElementById(elementId);
+
+            if (data.error || !data.caption) {
+                resultDiv.innerHTML = `<h4>Error</h4><p style="text-align: left;">${data.error || 'No se recibió una respuesta válida.'}</p>`;
+                return;
+            }
+            resultDiv.innerHTML = `<h4>Caption</h4><p>${data.caption}</p>`;
+        }
+
+        async function captionByUrl() {
+            const webhookUrl = 'https://ironiizx.app.n8n.cloud/webhook/caption';
+            const urlInput = document.getElementById('url');
+            const resultDiv = document.getElementById('urlResult');
+            const url = urlInput.value.trim();
+
+            if (!url) return alert('Ingresa una URL');
+
+            document.getElementById('urlPrev').innerHTML = `<img src="${url}" alt="preview"/>`;
+            resultDiv.innerHTML = '<div class="loader"></div>';
+
+            try {
+                const res = await fetch(webhookUrl, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'text/plain' },
+                    body: url
+                });
+                
+                if (!res.ok) {
+                    throw new Error(`Error del servidor: ${res.status}`);
+                }
+                
+                const data = await res.json();
+                displayResult('urlResult', data);
+
+            } catch (err) {
+                displayResult('urlResult', { error: err.message });
+            }
+        }
+        
+        document.getElementById('btnUrl').onclick = captionByUrl;
+    </script>
+</body>
+</html>
