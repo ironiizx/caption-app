@@ -1,76 +1,148 @@
 <!doctype html>
-<html lang="es">
+<html lang="es" class="compact">
 <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Analizador de Miniaturas con IA</title>
-    <link rel="stylesheet" href="style.css">
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Thumbnail Insights</title>
+  <link rel="stylesheet" href="style.css">
 </head>
 <body>
-    <main>
-        <h1>Analizador de Miniaturas con IA</h1>
-        
-        <div class="row">
-            <div class="card">
-                <h3>Por URL</h3>
-                <input id="url" type="text" placeholder="https://..." />
-                <button id="btnUrl">Analizar</button>
-                <div id="urlPrev"></div>
-                <div id="urlResult" class="result-box"></div>
-            </div>
+  <!-- Top Nav -->
+  <header class="nav">
+    <div class="brand">
+      <span class="brand__dot"></span>
+      <span class="brand__title">Thumbnail <strong>Insights</strong></span>
+    </div>
+    <nav class="nav__tabs">
+      <a class="tab is-active" href="#">Dashboard</a>
+      <a class="tab" href="#">Stats</a>
+      <a class="tab" href="#">Analyze</a>
+      <a class="tab" href="#">Trends</a>
+    </nav>
+    <div class="nav__right"><span class="badge">beta</span></div>
+  </header>
 
-            <div class="card">
-                <h3>Por Archivo</h3>
-                <input id="file" type="file" accept="image/*" disabled/>
-                <button id="btnFile" disabled>Analizar</button>
-                <div id="filePrev"></div>
-                <div id="fileResult" class="result-box"></div>
-            </div>
+  <div class="bg-glow"></div>
+
+  <!-- Lienzo 100vh sin scroll -->
+  <main class="canvas">
+    <!-- Columna izquierda: Input -->
+    <section class="card card--input">
+      <h3 class="card__title">Input</h3>
+
+      <div class="field">
+        <label class="label">By URL</label>
+        <div class="input-row">
+          <input id="url" type="text" placeholder="https://example.com/image.jpg" />
+          <button id="btnUrl" class="btn">Analyze</button>
         </div>
-    </main>
+      </div>
 
-    <script>
-        function displayResult(elementId, data) {
-            const resultDiv = document.getElementById(elementId);
+      <div class="divider"></div>
 
-            if (data.error || !data.caption) {
-                resultDiv.innerHTML = `<h4>Error</h4><p style="text-align: left;">${data.error || 'No se recibió una respuesta válida.'}</p>`;
-                return;
-            }
-            resultDiv.innerHTML = `<h4>Caption</h4><p>${data.caption}</p>`;
-        }
+      <div class="field">
+        <label class="label">By File <span class="muted">(soon)</span></label>
+        <div class="input-row">
+          <input id="file" type="file" accept="image/*" disabled />
+          <button id="btnFile" class="btn" disabled>Analyze</button>
+        </div>
+      </div>
 
-        async function captionByUrl() {
-            const webhookUrl = 'https://ironiizx.app.n8n.cloud/webhook/caption';
-            const urlInput = document.getElementById('url');
-            const resultDiv = document.getElementById('urlResult');
-            const url = urlInput.value.trim();
+      <div class="hint">
+        <span class="dot"></span>
+        Using model: <code id="modelTag">Xenova/vit-gpt2-image-captioning</code>
+      </div>
+    </section>
 
-            if (!url) return alert('Ingresa una URL');
+    <!-- Columna derecha: UNA tarjeta con todo -->
+    <section class="card card--right">
+      <div class="right-grid">
+        <!-- Preview (arriba) -->
+        <div class="zone zone--preview">
+          <div class="zone__header">
+            <h3 class="card__title">Preview</h3>
+            <div class="view-switch">
+              <button class="pill is-active">Original</button>
+              <button class="pill" disabled>Overlay</button>
+              <button class="pill" disabled>Compare</button>
+            </div>
+          </div>
+          <div id="urlPrev" class="preview"></div>
+        </div>
 
-            document.getElementById('urlPrev').innerHTML = `<img src="${url}" alt="preview"/>`;
-            resultDiv.innerHTML = '<div class="loader"></div>';
+        <!-- Caption (abajo izquierda) -->
+        <div class="zone">
+          <h3 class="card__title">AI Caption</h3>
+          <div id="urlResult" class="result-box">
+            <div class="placeholder">Paste a URL and press <strong>Analyze</strong>.</div>
+          </div>
+        </div>
 
-            try {
-                const res = await fetch(webhookUrl, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'text/plain' },
-                    body: url
-                });
-                
-                if (!res.ok) {
-                    throw new Error(`Error del servidor: ${res.status}`);
-                }
-                
-                const data = await res.json();
-                displayResult('urlResult', data);
+        <!-- Metrics (abajo derecha) -->
+        <div class="zone">
+          <div class="zone__header">
+            <h3 class="card__title">Visual Metrics</h3>
+            <div class="view-switch">
+              <button class="pill is-active">Overview</button>
+              <button class="pill" disabled>Histogram</button>
+              <button class="pill" disabled>Radar</button>
+            </div>
+          </div>
 
-            } catch (err) {
-                displayResult('urlResult', { error: err.message });
-            }
-        }
-        
-        document.getElementById('btnUrl').onclick = captionByUrl;
-    </script>
+          <div class="metrics">
+            <div class="metric"><div class="metric__label">Brightness</div><div class="metric__value" id="mBrightness">—</div></div>
+            <div class="metric"><div class="metric__label">Contrast</div><div class="metric__value" id="mContrast">—</div></div>
+            <div class="metric"><div class="metric__label">Saturation</div><div class="metric__value" id="mSaturation">—</div></div>
+            <div class="metric"><div class="metric__label">Dominant Color</div><div class="metric__swatch" id="mColor"></div></div>
+            <div class="metric"><div class="metric__label">Edge Density</div><div class="metric__value" id="mEdges">—</div></div>
+            <div class="metric"><div class="metric__label">Text Ratio</div><div class="metric__value" id="mText">—</div></div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <script>
+    const API_DEFAULT = 'http://localhost:3000/caption';
+    const backendUrl = localStorage.getItem('CAPTION_API') || API_DEFAULT;
+
+    function setModelTag(text){ document.getElementById('modelTag').textContent = text || '—'; }
+    function spinner(){ return `<div class="loader-wrap"><div class="loader"></div><div class="muted xs">Processing…</div></div>`; }
+
+    function displayResult(elementId, data){
+      const el = document.getElementById(elementId);
+      if (data?.model) setModelTag(data.model);
+      if (data?.error || !data?.caption){
+        el.innerHTML = `<div class="callout callout--error"><div class="callout__title">Error</div><div class="callout__body">${data.error || 'No response.'}</div></div>`;
+        return;
+      }
+      el.innerHTML = `<div class="caption"><div class="caption__label">Caption</div><div class="caption__text">${data.caption}</div></div>`;
+    }
+
+    async function captionByUrl(){
+      const url = document.getElementById('url').value.trim();
+      const prev = document.getElementById('urlPrev');
+      const resBox = document.getElementById('urlResult');
+      if (!url) return alert('Ingresá una URL');
+
+      prev.innerHTML = `<img src="${url}" alt="preview">`;
+      resBox.innerHTML = spinner();
+
+      try{
+        const res = await fetch(backendUrl, {
+          method:'POST',
+          headers:{'Content-Type':'application/json'},
+          body: JSON.stringify({ image_url: url })
+        });
+        if(!res.ok) throw new Error('Server error: '+res.status);
+        const data = await res.json();
+        displayResult('urlResult', data);
+      }catch(err){
+        displayResult('urlResult', { error: err.message });
+      }
+    }
+
+    document.getElementById('btnUrl').addEventListener('click', captionByUrl);
+  </script>
 </body>
 </html>

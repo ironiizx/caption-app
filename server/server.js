@@ -1,73 +1,79 @@
 import 'dotenv/config';
 import express from 'express';
-import { pipeline } from '@xenova/transformers';
-import sharp from 'sharp';
-import fetch from 'node-fetch'; // Es posible que necesites instalarlo: npm install node-fetch
+import fetch from 'node-fetch';
+import { pipeline, env } from '@xenova/transformers';
 
-const PORT = process.env.PORT || 3000;
+env.backends.onnx = 'wasm';
+env.useBrowserCache = false;
+env.allowLocalModels = true;
+
+const PORT = process.env.PORT || 8080;
 const MODEL_ID = process.env.MODEL_ID || 'Xenova/vit-gpt2-image-captioning';
+
+process.env.XENOVA_USE_LOCAL_MODELS = process.env.XENOVA_USE_LOCAL_MODELS ?? '1';
+process.env.TRANSFORMERS_CACHE = process.env.TRANSFORMERS_CACHE ?? './.models-cache';
 
 const app = express();
 app.use(express.json({ limit: '20mb' }));
 
-// CORS simple
 app.use((req, res, next) => {
-    res.setHeader('Access-Control-Allow-Origin', req.headers.origin || '*');
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-    if (req.method === 'OPTIONS') return res.sendStatus(204);
-    next();
+  res.setHeader('Access-Control-Allow-Origin', req.headers.origin || '*');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+  if (req.method === 'OPTIONS') return res.sendStatus(204);
+  next();
 });
 
-let pipePromise;
+app.get('/', (_req, res) => {
+  res.type('text').send('Caption backend up. Try POST /caption or GET /health');
+});
+
+app.get('/health', (_req, res) => {
+  res.json({ ok: true, model: MODEL_ID });
+});
+
+let pipePromise = null;
 async function getPipe() {
-    if (!pipePromise) {
-        pipePromise = pipeline('image-to-text', MODEL_ID);
-    }
-    return pipePromise;
+  if (!pipePromise) {
+    console.log('🔄 Cargando modelo:', MODEL_ID);
+    pipePromise = pipeline('image-to-text', MODEL_ID);
+  }
+  return pipePromise;
+}
+
+async function getImageBytes(input) {
+  if (!input) throw new Error('Falta image_url o image_base64');
+  if (/^https?:\/\//i.test(input)) {
+    const r = await fetch(input, { headers: { 'User-Agent': 'Mozilla/5.0' } });
+    if (!r.ok) throw new Error(`fetch ${r.status}`);
+    return new Uint8Array(await r.arrayBuffer());
+  }
+  if (input.startsWith('data:image/')) {
+    return Buffer.from(input.split(',')[1], 'base64');
+  }
+  return Buffer.from(input, 'base64');
 }
 
 app.post('/caption', async (req, res) => {
-    try {
-        const { image_url, max_new_tokens = 30 } = req.body || {};
-        if (!image_url) {
-            return res.status(400).json({ error: 'Falta image_url' });
-        }
-        
-        const pipe = await getPipe();
-        const input = String(image_url);
+  try {
+    const { image_url, image_base64 } = req.body || {};
+    const bytes = await getImageBytes(image_url || image_base64);
 
-        // Descargamos la imagen para las métricas
-        const imageResponse = await fetch(input);
-        if (!imageResponse.ok) throw new Error(`Failed to fetch image: ${imageResponse.statusText}`);
-        const imageBuffer = Buffer.from(await imageResponse.arrayBuffer());
+    const pipe = await getPipe();
+    const t0 = Date.now();
+    const out = await pipe(bytes, { max_new_tokens: 40 });
 
-        const [captionResult, metricsResult] = await Promise.all([
-            pipe(input, { max_new_tokens }),
-            (async () => {
-                const image = sharp(imageBuffer);
-                const metadata = await image.metadata();
-                const stats = await image.stats();
-                const brightness = (stats.channels[0].mean + stats.channels[1].mean + stats.channels[2].mean) / 3;
-                return {
-                    width: metadata.width,
-                    height: metadata.height,
-                    format: metadata.format,
-                    brightness: parseFloat(brightness.toFixed(2)),
-                };
-            })()
-        ]);
-        
-        const caption = captionResult?.[0]?.generated_text ?? '';
-        res.json({ caption, model: MODEL_ID, metrics: metricsResult });
-
-    } catch (err) {
-        console.error(err);
-        res.status(500).json({ error: String(err) });
-    }
+    res.json({
+      caption: out?.[0]?.generated_text ?? '',
+      model: MODEL_ID,
+      latency_ms: Date.now() - t0
+    });
+  } catch (e) {
+    console.error('Error /caption:', e);
+    res.status(500).json({ error: String(e.message || e) });
+  }
 });
 
-app.listen(PORT, () => {
-    console.log(`✅ Caption server on http://localhost:${PORT}`);
-    console.log(`   Modelo: ${MODEL_ID}`);
+app.listen(PORT, '0.0.0.0', () => {
+  console.log(`✅ Server escuchando en 0.0.0.0:${PORT}`);
 });
